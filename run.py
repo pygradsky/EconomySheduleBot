@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""
-run.py — Launch FastAPI server + Telegram bot concurrently.
-"""
-
 import asyncio
-import sys
 import threading
 import uvicorn
 from loguru import logger
@@ -14,22 +8,20 @@ from backend.main import app
 
 
 def run_api():
-    """Run FastAPI in a thread."""
-    uvicorn.run(
-        app,
-        host=settings.HOST,
-        port=settings.PORT,
-        log_level="warning",
-    )
+    uvicorn.run(app, host=settings.HOST, port=settings.PORT, log_level="warning")
 
 
-def run_bot():
-    """Run Telegram bot."""
-    try:
-        from bot import run_bot as _run_bot
-        _run_bot()
-    except Exception as e:
-        logger.error(f"Bot error: {e}")
+async def run_bot_async():
+    from telegram.ext import Application, CommandHandler, MessageHandler, filters
+    from bot import start, help_command, handle_webapp_data
+
+    application = Application.builder().token(settings.BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
+
+    logger.info("🤖 Bot started (polling)")
+    await application.run_polling(allowed_updates=["message", "callback_query"])
 
 
 if __name__ == "__main__":
@@ -39,11 +31,9 @@ if __name__ == "__main__":
     api_thread.start()
     logger.info(f"✅ API started at http://{settings.HOST}:{settings.PORT}")
 
-    # Bot in main thread (if token configured)
     if settings.BOT_TOKEN and settings.BOT_TOKEN != "your_bot_token":
         logger.info("🤖 Starting Telegram bot...")
-        run_bot()
+        asyncio.run(run_bot_async())
     else:
-        logger.warning("BOT_TOKEN not set — only API running. Set BOT_TOKEN in .env to enable the bot.")
-        # Keep alive
+        logger.warning("BOT_TOKEN not set — only API running.")
         api_thread.join()
