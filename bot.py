@@ -18,19 +18,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     logger.info(f"User {user.id} ({user.first_name}) started the bot")
 
-    keyboard = [[
-        InlineKeyboardButton(
-            text="📅 Открыть расписание",
-            web_app=WebAppInfo(url=settings.WEBAPP_URL),
-        )
-    ]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_html(
         f"Привет, <b>{user.first_name}</b>! 👋\n\n"
         f"🎓 Бот для просмотра расписания института.\n\n"
-        f"Нажми кнопку ниже, чтобы открыть расписание:",
-        reply_markup=reply_markup,
+        f"Нажми кнопку <b>Расписание</b> в меню слева, чтобы открыть расписание."
     )
 
 

@@ -20,15 +20,16 @@ from loguru import logger
 
 try:
     import pdfplumber
+
     HAS_PDFPLUMBER = True
 except ImportError:
     HAS_PDFPLUMBER = False
 
 from backend.models.schedule import Lesson, DaySchedule, GroupSchedule, CourseSchedule
 
-DAYS_RU         = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА"]
-DAYS_RU_DISPLAY = ["Понедельник", "Вторник",  "Среда", "Четверг", "Пятница"]
-DAYS_EN         = ["monday", "tuesday", "wednesday", "thursday", "friday"]
+DAYS_RU = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА"]
+DAYS_RU_DISPLAY = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница"]
+DAYS_EN = ["monday", "tuesday", "wednesday", "thursday", "friday"]
 
 LESSON_TYPE_MAP = {"лек": "lecture", "пр": "practice", "сем": "seminar", "лаб": "lab"}
 
@@ -42,8 +43,10 @@ def pdf_hash(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+
 def hash_str(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
+
 
 def normalize_time(raw: str) -> tuple[str, str]:
     """'09.00-\\n10.35' → ('09:00', '10:35')"""
@@ -56,8 +59,10 @@ def normalize_time(raw: str) -> tuple[str, str]:
         return parts[0], ""
     return "", ""
 
+
 def detect_lesson_type(prefix: str) -> str:
     return LESSON_TYPE_MAP.get(prefix.lower(), "other")
+
 
 def split_lessons(cell: str) -> list[str]:
     lines = [l.strip() for l in cell.strip().split("\n") if l.strip()]
@@ -72,8 +77,9 @@ def split_lessons(cell: str) -> list[str]:
         blocks.append("\n".join(current))
     return blocks if blocks else [cell.strip()]
 
+
 def parse_lesson_text(raw: str, time_start: str, time_end: str,
-                       week_type: Optional[str]) -> Optional[Lesson]:
+                      week_type: Optional[str]) -> Optional[Lesson]:
     lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
     if not lines:
         return None
@@ -108,7 +114,7 @@ def parse_lesson_text(raw: str, time_start: str, time_end: str,
         teacher=teacher[:100] if teacher else None,
         room=room,
         lesson_type=lesson_type,
-        week_type=week_type,   # "odd"=верхняя | "even"=нижняя | None=обе
+        week_type=week_type,  # "odd"=верхняя | "even"=нижняя | None=обе
     )
 
 
@@ -142,10 +148,10 @@ def parse_table(table: list[list[str]], course: int) -> dict[str, dict[str, list
         g: {d: [] for d in DAYS_RU} for g in groups if g
     }
 
-    current_day   = ""
-    current_ts    = ""   # time_start
-    current_te    = ""   # time_end
-    last_had_time = False   # True if previous data row had a time cell
+    current_day = ""
+    current_ts = ""  # time_start
+    current_te = ""  # time_end
+    last_had_time = False  # True if previous data row had a time cell
 
     for row in table[header_idx + 1:]:
         if not row or len(row) < 3:
@@ -163,15 +169,14 @@ def parse_table(table: list[list[str]], course: int) -> dict[str, dict[str, list
 
         if has_time:
             current_ts, current_te = normalize_time(time_raw)
-            week_type = "odd"    # верхняя — строка с временем
+            week_type = "odd"
             last_had_time = True
+            last_time_row_idx = len(result)
         else:
             if last_had_time:
-                # строка сразу после строки с временем = нижняя неделя
                 week_type = "even"
             else:
                 week_type = None
-            # Don't reset last_had_time — multiple "even" rows can follow
 
         if not current_day or not current_ts:
             continue
@@ -194,6 +199,18 @@ def parse_table(table: list[list[str]], course: int) -> dict[str, dict[str, list
                 lesson = parse_lesson_text(lesson_raw, current_ts, current_te, week_type)
                 if lesson:
                     result[group][current_day].append(lesson)
+
+    for group_lessons in result.values():
+        for day_lessons in group_lessons.values():
+            from itertools import groupby
+            by_time: dict[str, list] = {}
+            for l in day_lessons:
+                by_time.setdefault(l.time_start, []).append(l)
+            for ts, lessons in by_time.items():
+                types = {l.week_type for l in lessons}
+                if types == {"odd"}:
+                    for l in lessons:
+                        l.week_type = None
 
     return result
 
